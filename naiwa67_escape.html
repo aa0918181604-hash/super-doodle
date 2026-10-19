@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>奶娃67：深夜逃生</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#080b0a;color:#fff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none}
+#game{display:block;width:100vw;height:100dvh;background:#101512}
+#hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;z-index:2;font-weight:800;text-shadow:0 2px 5px #000}
+.pill{background:#101814cc;border:1px solid #ffffff30;border-radius:12px;padding:8px 11px}
+#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#030605c9;z-index:5;padding:22px}
+.panel{max-width:390px;width:100%;background:#151d19;border:1px solid #8aaf8b66;border-radius:22px;padding:25px;text-align:center;box-shadow:0 15px 60px #000}
+h1{font-size:30px;margin:0 0 8px}p{color:#d2ddd4;line-height:1.55}
+button{border:0;border-radius:14px;padding:13px 17px;background:#f4d84a;color:#17170e;font-size:17px;font-weight:900}
+#controls{position:fixed;bottom:20px;left:0;right:0;display:flex;justify-content:space-between;align-items:end;padding:0 18px;z-index:3;pointer-events:none}
+.pad{display:flex;gap:10px;pointer-events:auto}
+.ctrl{width:62px;height:62px;border-radius:50%;background:#ffffff24;border:2px solid #ffffff7a;color:white;font-size:24px;backdrop-filter:blur(5px);touch-action:none}
+#run{width:76px;height:76px;background:#e8d143;color:#111;border:0}
+small{color:#aab9ae}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud"><div class="pill">🏃 距離 <span id="dist">0</span>m</div><div class="pill">🧺 物資 <span id="loot">0</span>/5</div><div class="pill">❤️ <span id="hp">3</span></div></div>
+<div id="controls">
+ <div class="pad"><button class="ctrl" id="left">←</button><button class="ctrl" id="right">→</button></div>
+ <div class="pad"><button class="ctrl" id="jump">↑</button><button class="ctrl" id="run">⚡</button></div>
+</div>
+<div id="overlay"><div class="panel"><h1>奶娃67：深夜逃生</h1><div style="font-size:58px">👽🎧</div><p>深夜巷子裡，奶娃67醒了！<br>左右移動、跳過障礙，收集 5 個物資並逃到巷口。別讓黃色怪物抓到你！</p><p><small>手機：使用下方按鈕　電腦：← → 移動、↑ 跳躍、Shift 衝刺</small></p><button id="start">開始逃生！</button></div></div>
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+let W,H,dpr,playing=false,frame=0,playerX=0, lane=0, jumpY=0,jumpV=0, distance=0, loot=0,hp=3, enemy=0, items=[], obstacles=[], last=0, invuln=0;
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}addEventListener('resize',resize);resize();
+function reset(){frame=0;playerX=0;lane=0;jumpY=0;jumpV=0;distance=0;loot=0;hp=3;enemy=0;items=[];obstacles=[];invuln=0;for(let i=0;i<7;i++)spawn(i*95+150);updateHud()}
+function spawn(z){let x=Math.random()*1.5-.75;if(Math.random()<.48)items.push({z,x,got:false});else obstacles.push({z,x,type:Math.random()<.5?'🗑️':'🪵',hit:false})}
+function updateHud(){document.getElementById('dist').textContent=Math.floor(distance);document.getElementById('loot').textContent=loot;document.getElementById('hp').textContent=hp}
+function draw(){ctx.clearRect(0,0,W,H);let sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#050807');sky.addColorStop(.55,'#17201b');sky.addColorStop(1,'#343a2e');ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+ // buildings and lamps
+ ctx.fillStyle='#0b100e';ctx.beginPath();ctx.moveTo(0,H*.15);ctx.lineTo(W*.28,H*.29);ctx.lineTo(W*.38,H);ctx.lineTo(0,H);ctx.fill();ctx.beginPath();ctx.moveTo(W,H*.12);ctx.lineTo(W*.72,H*.29);ctx.lineTo(W*.62,H);ctx.lineTo(W,H);ctx.fill();
+ for(let i=0;i<5;i++){let y=((i*130+frame*2)%(H+120));ctx.fillStyle='#b2a86c';ctx.globalAlpha=.5;ctx.beginPath();ctx.arc(W*(i%2?.84:.14),y,3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+ // road perspective
+ ctx.fillStyle='#292e28';ctx.beginPath();ctx.moveTo(W*.28,H*.29);ctx.lineTo(W*.72,H*.29);ctx.lineTo(W*1.15,H);ctx.lineTo(-W*.15,H);ctx.fill();
+ ctx.strokeStyle='#737565';ctx.globalAlpha=.25;ctx.lineWidth=2;for(let i=0;i<7;i++){let y=H*.34+((i*100+frame*4)%(H*.8));ctx.beginPath();ctx.moveTo(W*.5-(y/H)*W*.25,y);ctx.lineTo(W*.5+(y/H)*W*.25,y);ctx.stroke()}ctx.globalAlpha=1;
+ // approaching things
+ const drawObj=(o,emoji)=>{let t=1-o.z/850;if(t<0||t>1)return;let y=H*(.32+t*.7), x=W*(.5+o.x*(.08+t*.38));ctx.font=`${18+t*30}px serif`;ctx.textAlign='center';ctx.fillText(emoji,x,y)};
+ items.forEach(o=>{if(!o.got)drawObj(o,'🧺')});obstacles.forEach(o=>{if(!o.hit)drawObj(o,o.type)});
+ // monster behind, grows when close
+ let ex=W*(.5-playerX*.17), ey=H*.48+Math.sin(frame*.09)*4, scale=.72+enemy*.3;
+ ctx.save();ctx.translate(ex,ey);ctx.scale(scale,scale);ctx.fillStyle='#e5c83a';ctx.beginPath();ctx.ellipse(0,36,31,40,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff0b7';ctx.beginPath();ctx.ellipse(0,42,19,25,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(0,-2,26,0,Math.PI*2);ctx.fillStyle='#e9d23f';ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(-9,-3,8,0,Math.PI*2);ctx.arc(10,-3,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#263b24';ctx.beginPath();ctx.arc(-8,-3,4,0,Math.PI*2);ctx.arc(10,-3,4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#c9c8bd';ctx.beginPath();ctx.arc(-25,-4,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#3a2b12';ctx.fillRect(-18,67,12,25);ctx.fillRect(8,67,12,25);ctx.restore();
+ // player
+ let px=W*(.5+playerX*.28), py=H*.78-jumpY;ctx.font='48px serif';ctx.textAlign='center';ctx.globalAlpha=invuln>0&&frame%6<3?.35:1;ctx.fillText('🏃',px,py);ctx.globalAlpha=1;
+ if(!playing){ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 18px system-ui';}
+}
+function step(ts){if(!last)last=ts;let dt=Math.min((ts-last)/16.67,2);last=ts;if(playing){frame+=dt;distance+=.12*dt;enemy=Math.min(1,enemy+.0007*dt);if(jumpY>0||jumpV>0){jumpY+=jumpV*dt;jumpV-=.8*dt;if(jumpY<0){jumpY=0;jumpV=0}}if(invuln>0)invuln-=dt;
+ [...items,...obstacles].forEach(o=>{o.z-=4.2*dt;if(o.z<40&&o.z>-2&&!o.done){o.done=true;let same=Math.abs(o.x-playerX)<.42;if(o.got!==undefined){if(same&&!o.got){o.got=true;loot++;}}else if(same&&jumpY<20&&!o.hit){o.hit=true;if(invuln<=0){hp--;invuln=65;enemy=Math.min(1,enemy+.12)}}}});
+ items=items.filter(o=>o.z>-30&&!o.got);obstacles=obstacles.filter(o=>o.z>-30&&!o.hit);if(frame%35<dt)spawn(850);if(frame%4<dt)updateHud();
+ if(hp<=0){end(false)}if(distance>=500){end(true)}
+ }draw();requestAnimationFrame(step)}
+function end(win){playing=false;document.querySelector('#overlay').style.display='flex';document.querySelector('.panel').innerHTML=`<h1>${win?'成功逃出！🎉':'被奶娃67抓到了！😱'}</h1><div style="font-size:54px">${win?'🏆':'👽🎧'}</div><p>逃跑距離：${Math.floor(distance)}m<br>收集物資：${loot}/5</p><button id="start">再玩一次</button>`;document.getElementById('start').onclick=begin}
+function begin(){reset();playing=true;document.querySelector('#overlay').style.display='none'}
+document.getElementById('start').onclick=begin;
+function move(v){playerX=Math.max(-1,Math.min(1,playerX+v*.22))}
+[['left',()=>move(-1)],['right',()=>move(1)],['jump',()=>{if(jumpY===0&&jumpV===0)jumpV=13}],['run',()=>{distance+=2;enemy=Math.max(0,enemy-.015)}]].forEach(([id,fn])=>{let b=document.getElementById(id);b.addEventListener('pointerdown',e=>{e.preventDefault();fn()})});
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft')move(-1);if(e.key==='ArrowRight')move(1);if(e.key==='ArrowUp'&&jumpY===0)jumpV=13;if(e.key==='Shift')distance+=2});
+requestAnimationFrame(step);
+</script>
+</body></html>
